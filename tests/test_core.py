@@ -112,6 +112,13 @@ def test_optimizer_with_directives():
             ),
             explanation="No charging.",
         ),
+        DirectiveInterpretation(
+            note_index=2,
+            applies=False,
+            directive_type="no_op",
+            structured_adjustment=None,
+            explanation="The note is unrelated.",
+        ),
     ]
 
     validate_all_directives(
@@ -250,7 +257,7 @@ def test_grid_cap():
             directive_type="max_grid_window",
             structured_adjustment=GridWindowAdjustment(
                 hours=[18, 19, 20],
-                max_grid_kwh=150,
+                max_grid_kwh=180,
             ),
             explanation="Grid import is capped.",
         ),
@@ -267,7 +274,7 @@ def test_grid_cap():
             "grid_kwh"
         ]
 
-        assert grid <= 150.01
+        assert grid <= 180.01
 
     validate_hourly_plan(
         request,
