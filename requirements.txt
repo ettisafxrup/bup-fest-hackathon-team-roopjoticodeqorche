@@ -1,4 +1,5 @@
 FastAPI
+uvicorn
 Pydantic
 NumPy
 SciPy
