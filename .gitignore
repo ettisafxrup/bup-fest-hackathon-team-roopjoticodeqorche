@@ -33,8 +33,3 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
-
-
-setup-ollama.sh
-render.yaml
-docker-compose.yaml
