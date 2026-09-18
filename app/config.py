@@ -10,6 +10,7 @@ class Settings:
     No secret values are hard-coded into the source code.
     """
 
+    llm_provider: str
     llm_api_url: str
     llm_api_key: str
     llm_model: str
@@ -19,21 +20,22 @@ class Settings:
 
     @classmethod
     def from_environment(cls) -> "Settings":
+        provider = os.getenv("LLM_PROVIDER", "local").strip().lower()
         api_url = os.getenv("LLM_API_URL", "").strip()
         api_key = os.getenv("LLM_API_KEY", "").strip()
         model = os.getenv("LLM_MODEL", "").strip()
 
-        if not api_url:
+        if provider not in {"local", "remote"}:
+            raise RuntimeError(
+                "LLM_PROVIDER must be either local or remote."
+            )
+
+        if provider == "remote" and not api_url:
             raise RuntimeError(
                 "LLM_API_URL environment variable is not configured."
             )
 
-        if not api_key:
-            raise RuntimeError(
-                "LLM_API_KEY environment variable is not configured."
-            )
-
-        if not model:
+        if provider == "remote" and not model:
             raise RuntimeError(
                 "LLM_MODEL environment variable is not configured."
             )
@@ -73,6 +75,7 @@ class Settings:
             )
 
         return cls(
+            llm_provider=provider,
             llm_api_url=api_url,
             llm_api_key=api_key,
             llm_model=model,

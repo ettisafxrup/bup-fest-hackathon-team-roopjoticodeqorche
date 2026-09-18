@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from typing import Any
 
 import requests
@@ -61,11 +62,101 @@ def _response_content(response: requests.Response) -> Any:
     return content
 
 
+def _hour(value: str, meridiem: str | None) -> int:
+    hour = int(value)
+    if meridiem and meridiem.lower() == "pm" and hour != 12:
+        hour += 12
+    if meridiem and meridiem.lower() == "am" and hour == 12:
+        hour = 0
+    return hour
+
+
+def _hours_from_note(note: str) -> list[int] | None:
+    match = re.search(
+        r"(?:from|between)\s+(\d{1,2})\s*(am|pm)?\s*(?:to|and|through|-)\s*"
+        r"(\d{1,2})\s*(am|pm)?",
+        note,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+
+    start = _hour(match.group(1), match.group(2) or match.group(4))
+    end = _hour(match.group(3), match.group(4) or match.group(2))
+    if start > end or end > 24:
+        return None
+    return list(range(start, end))
+
+
+def _interpret_locally(notes: list[str]) -> list[DirectiveInterpretation]:
+    directives = []
+    for note_index, note in enumerate(notes):
+        text = note.lower()
+        hours = _hours_from_note(text)
+        directive_type = "no_op"
+        adjustment = None
+
+        if "solar" in text and ("drop" in text or "reduc" in text):
+            percent = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
+            factor = float(percent.group(1)) / 100 if percent else 0.0
+            if hours is not None:
+                directive_type = "solar_reduction"
+                adjustment = SolarReductionAdjustment(
+                    hours=hours,
+                    factor=factor,
+                )
+        elif "do not charge" in text or "no charge" in text or "charging" in text and "unavailable" in text:
+            if hours is not None:
+                directive_type = "no_charge_window"
+                adjustment = WindowAdjustment(hours=hours)
+        elif "do not discharge" in text or "no discharge" in text or "discharging" in text and "unavailable" in text:
+            if hours is not None:
+                directive_type = "no_discharge_window"
+                adjustment = WindowAdjustment(hours=hours)
+        else:
+            reserve = re.search(r"(?:reserve|minimum)[^\d]*(\d+(?:\.\d+)?)\s*kwh", text)
+            grid_cap = re.search(r"(?:cap|max(?:imum)?)[^\d]*(\d+(?:\.\d+)?)\s*kwh", text)
+            if hours is not None and reserve:
+                directive_type = "minimum_battery_reserve"
+                adjustment = BatteryReserveAdjustment(
+                    hours=hours,
+                    minimum_energy_kwh=float(reserve.group(1)),
+                )
+            elif hours is not None and grid_cap:
+                directive_type = "max_grid_window"
+                adjustment = GridWindowAdjustment(
+                    hours=hours,
+                    max_grid_kwh=float(grid_cap.group(1)),
+                )
+
+        applies = directive_type != "no_op"
+        directives.append(
+            DirectiveInterpretation(
+                note_index=note_index,
+                applies=applies,
+                directive_type=directive_type,
+                structured_adjustment=adjustment,
+                explanation=(
+                    "Local rule-based interpretation."
+                    if applies
+                    else "No supported energy directive detected."
+                ),
+            )
+        )
+
+    return directives
+
+
 def interpret_operator_notes(
     notes: list[str],
     settings: Any,
 ) -> list[DirectiveInterpretation]:
-    """Ask the configured OpenAI-compatible provider for validated directives."""
+    """Interpret notes locally or through the configured provider."""
+
+    if settings.llm_provider == "local" and not (
+        settings.llm_api_url and settings.llm_model
+    ):
+        return _interpret_locally(notes)
 
     user_payload = json.dumps(
         {"operator_notes": notes},
