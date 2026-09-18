@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from asyncio.log import logger
 import json
 import math
 import re
@@ -18,22 +19,98 @@ from .models import (
 
 
 SYSTEM_PROMPT = """
-You interpret smart-campus energy operator notes into structured directives.
-Return JSON only with a top-level key named directive_interpretation.
-Return exactly one directive for each note, in note_index order.
+You are an energy scheduling directive interpreter.
 
-Allowed directive types and adjustment shapes:
-- solar_reduction: {hours: [integer hours], factor: number from 0 to 1}
-- minimum_battery_reserve: {hours: [integer hours], minimum_energy_kwh: non-negative number}
-- no_charge_window: {hours: [integer hours]}
-- no_discharge_window: {hours: [integer hours]}
-- max_grid_window: {hours: [integer hours], max_grid_kwh: non-negative number}
-- no_op: structured_adjustment must be null and applies must be false
+Return ONLY one valid JSON object.
 
-Use no_op for notes unrelated to energy scheduling. Do not invent constraints.
-For every other directive, applies must be true and the adjustment must match
-the directive type. Hours must be unique integers from 0 through 23 in ascending order.
-Each directive must also contain a concise explanation string.
+The JSON object MUST have exactly one top-level key:
+
+"directive_interpretation"
+
+"directive_interpretation" must be an array containing exactly
+one directive for every input operator note, in note_index order.
+
+IMPORTANT: Every directive object MUST contain an "explanation" field.
+"explanation" MUST always be a non-empty string.
+Never omit the "explanation" field, including for "no_op".
+
+{
+  "note_index": integer,
+  "applies": boolean,
+  "directive_type": string,
+  "structured_adjustment": object or null,
+  "explanation": string
+}
+
+Allowed directive_type values:
+
+- solar_reduction
+- minimum_battery_reserve
+- no_charge_window
+- no_discharge_window
+- max_grid_window
+- no_op
+
+Rules:
+
+1. note_index starts at 0 and matches the input note index.
+
+2. Return exactly one directive for every input note.
+
+3. Return directives in note_index order.
+
+4. For unrelated notes, use:
+   "directive_type": "no_op"
+   "applies": false
+   "structured_adjustment": null
+
+5. For every non-no_op directive:
+   "applies": true
+   "structured_adjustment" must contain the appropriate fields.
+
+6. solar_reduction:
+   {
+     "hours": [integer hours],
+     "factor": number from 0 to 1
+   }
+
+7. minimum_battery_reserve:
+   {
+     "hours": [integer hours],
+     "minimum_energy_kwh": non-negative number
+   }
+
+8. no_charge_window:
+   {
+     "hours": [integer hours]
+   }
+
+9. no_discharge_window:
+   {
+     "hours": [integer hours]
+   }
+
+10. max_grid_window:
+    {
+      "hours": [integer hours],
+      "max_grid_kwh": non-negative number
+    }
+
+11. Hours must be unique integers from 0 through 23.
+
+12. Hours must be sorted in ascending order.
+
+13. Time ranges are half-open.
+    For example:
+    "2 PM to 4 PM" means [14, 15].
+
+14. Do not invent constraints.
+
+15. Ignore unrelated notes by returning no_op.
+
+16. Return JSON only.
+17. Do not use markdown.
+18. Do not put JSON inside ``` fences.
 """.strip()
 
 
@@ -60,7 +137,6 @@ def _response_content(response: requests.Response) -> Any:
             raise RuntimeError("LLM returned invalid directive JSON") from exc
 
     return content
-
 
 def _hour(value: str, meridiem: str | None) -> int:
     hour = int(value)
@@ -153,38 +229,53 @@ def interpret_operator_notes(
 ) -> list[DirectiveInterpretation]:
     """Interpret notes locally or through the configured provider."""
 
-    if settings.llm_provider == "local" and not (
-        settings.llm_api_url and settings.llm_model
-    ):
-        return _interpret_locally(notes)
-
     user_payload = json.dumps(
         {"operator_notes": notes},
         ensure_ascii=True,
     )
 
     try:
+        
         response = requests.post(
-            settings.llm_api_url,
-            headers={
-                "Authorization": f"Bearer {settings.llm_api_key}",
-                "Content-Type": "application/json",
+        settings.llm_api_url,
+        headers={
+        "Authorization": f"Bearer {settings.llm_api_key}",
+        "Content-Type": "application/json",
+        },
+        json={
+        "model": settings.llm_model,
+        "temperature": 0,
+        "max_tokens": settings.llm_max_tokens,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT,
             },
-            json={
-                "model": settings.llm_model,
-                "temperature": 0,
-                "max_tokens": settings.llm_max_tokens,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_payload},
-                ],
+            {
+                "role": "user",
+                "content": user_payload,
             },
-            timeout=settings.request_timeout_seconds,
+        ],
+        },
+        timeout=settings.request_timeout_seconds,
         )
+
+       
+        
         response.raise_for_status()
     except requests.RequestException as exc:
-        raise RuntimeError("LLM request failed") from exc
+        if exc.response is not None:
+            logger.error(
+            "LLM API error: status=%s body=%s",
+            exc.response.status_code,
+            exc.response.text,
+        )
+
+        raise RuntimeError(
+        f"LLM request failed: {exc}"
+        ) from exc
+
 
     content = _response_content(response)
     if not isinstance(content, dict):
@@ -200,7 +291,15 @@ def interpret_operator_notes(
             for item in raw_directives
         ]
     except (TypeError, ValueError) as exc:
-        raise RuntimeError("LLM returned an invalid directive structure") from exc
+        logger.exception(
+        "Invalid directive returned by LLM. Raw directives: %r",
+        raw_directives,
+    )
+
+        raise RuntimeError(
+        f"LLM returned invalid structured directives: {exc}"
+        ) from exc
+
 
 
 VALID_DIRECTIVE_TYPES = {

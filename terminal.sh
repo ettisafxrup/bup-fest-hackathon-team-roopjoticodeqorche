@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://127.0.0.1:${PORT:-6969}}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:${PORT:-$1}}"
 REQUEST_FILE="tests/sample_request.json"
 
 if [[ ! -f "$REQUEST_FILE" ]]; then

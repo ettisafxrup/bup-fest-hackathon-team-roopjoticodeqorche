@@ -121,17 +121,16 @@ def optimize_energy(
 
     except Exception as exc:
 
-        logger.error(
-            "Operator-note interpretation failed"
-        )
+        logger.exception(
+        "Operator-note interpretation failed"
+    )
 
         raise HTTPException(
-            status_code=500,
-            detail=(
-                "Operator-note interpretation "
-                "failed safely"
-            ),
-        ) from exc
+        status_code=500,
+        detail=str(exc),
+            ) from exc
+
+        
 
     # --------------------------------------------------------
     # Deterministic guardrails

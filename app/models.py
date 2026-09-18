@@ -233,7 +233,7 @@ class DirectiveInterpretation(BaseModel):
         | None
     )
 
-    explanation: str
+    explanation: str = ""
 
     @field_validator("note_index")
     @classmethod
