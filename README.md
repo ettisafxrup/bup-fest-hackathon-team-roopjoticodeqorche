@@ -1,6 +1,6 @@
-# 🌆 GridWise LLM | Operator Directive → Optimized Schedule
+# 🌆 GridWise LLM
 
-## Team RoopJoti CodeQorche | BUP CSE FEST 2026
+## Your Operator Directive → Optimized Schedule
 
 [![BUP CSE Fest 2026](https://img.shields.io/badge/BUP_CSE_FEST-2026-blue)](#)
 [![Presentation](https://img.shields.io/badge/Presentation-Video%20Link-red)](https://drive.google.com/drive/folders/1z2A7ljdhnD6J-JHNkV_2gDAxN50XqGo-?usp=sharing)
@@ -8,6 +8,8 @@
 
 <a href="https://drive.google.com/drive/folders/1z2A7ljdhnD6J-JHNkV_2gDAxN50XqGo-?usp=sharing">🎥 Presentation Video</a>
 <a href="https://bup-fest-hackathon-team.onrender.com">📺 Live Host</a>
+
+<b> Team RoopJoti CodeQorche | BUP CSE FEST 2026 </b>
 
 > Turn 1–3 lines of plain-English operator notes into a validated, cost-minimal 24-hour campus energy schedule.
 
