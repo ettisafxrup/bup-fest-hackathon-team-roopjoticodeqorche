@@ -35,9 +35,6 @@ build/
 *.egg-info/
 
 
-run.sh
 setup-ollama.sh
-terminal.sh
-prep.sh
 render.yaml
 docker-compose.yaml
